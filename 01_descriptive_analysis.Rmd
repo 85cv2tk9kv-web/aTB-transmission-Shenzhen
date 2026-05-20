@@ -1,0 +1,293 @@
+---
+title: "Untitled"
+output: html_document
+date: "2025-07-14"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r setup, include=FALSE}
+rm(list=ls())
+
+# 加载包
+library(dplyr)
+library(ggplot2)
+library(jtools)
+library(foreign)
+library(survival)
+library(MASS)
+library(nnet)
+library(epiDisplay)
+library(purrr)
+
+# 导入数据
+df <- read.csv("positive_patients.csv",
+               stringsAsFactors = FALSE)  # 避免自动转因子
+
+# 指定哪些列不要转因子
+keep_as_is <- c("age", "treat_days", "event_status", "patient_id", "菌株号")
+
+# 转换
+df <- df %>%
+  mutate(
+    across(-all_of(keep_as_is), as.factor),  # 除了这些列，全部转因子
+    age = as.numeric(age),
+    treat_days = as.numeric(treat_days),
+    event_status = as.numeric(event_status),
+    patient_id = as.character(patient_id),
+    菌株号 = as.character(菌株号),
+    symptom_status = factor(sym.aTB.0..sTB.1.,
+                            levels = c(1, 0),
+                            labels = c("Symptomatic", "Asymptomatic"))
+  )
+# 查看数据结构
+str(df)
+```
+
+```{r df}
+#summary(df)
+# 按列统计频数和比例（只对字符型或因子型变量）
+summary_table <- df %>%
+  select(where(~ is.factor(.))) %>%
+  map_dfr(~ {
+    tbl <- as.data.frame(table(.))
+    tbl$Prop <- round(prop.table(tbl$Freq), 3)
+    colnames(tbl)[1] <- "Level"
+    return(tbl)
+  }, .id = "Variable")
+
+print(summary_table)
+
+
+```
+
+```{r 1}
+df %>%
+  summarise(
+    n = n(),
+    median_age = median(age, na.rm = TRUE),
+    Q1_age = quantile(age, 0.25, na.rm = TRUE),
+    Q3_age = quantile(age, 0.75, na.rm = TRUE)
+  )
+
+df_day <- df[df$outcomes != 3, ]
+df_day %>%
+  summarise(
+    n = n(),
+    median_day = median(treat_days, na.rm = TRUE),
+    Q1_day = quantile(treat_days, 0.25, na.rm = TRUE),
+    Q3_day = quantile(treat_days, 0.75, na.rm = TRUE)
+  )
+
+
+```
+
+```{r 7}
+# 创建一个二维列联表
+data <- matrix(c(307,626,108,219,467,542), nrow = 3 ,byrow = TRUE)
+colnames(data) <- c("亚临床","活动")
+rownames(data) <- c("L2", "L4","Others/Unknown")
+prop.table(data, margin = 2)
+
+print(data)
+
+# 执行卡方检验
+chisq.test(data)
+```
+
+
+```{r 4}
+df <- df %>%
+  mutate(sym.aTB.0..sTB.1. = factor(sym.aTB.0..sTB.1.,
+                                    levels = c(1, 0),
+                                    labels = c("Symptomatic", "Asymptomatic")))
+##性别
+# 创建性别与症状组别的列联表
+table_gender <- table(df$gender.male.1..female.0.,df$sym.aTB.0..sTB.1.)
+table_gender
+prop.table(table_gender, margin = 2)
+chisq.test(table_gender)
+
+```
+
+```{r 11}
+##年龄
+table_age<-table(df$age_cat,df$sym.aTB.0..sTB.1.)
+table_age
+prop.table(table_age, margin = 2)
+chisq.test(table_age)
+```
+
+
+```{r age}
+df %>%
+  group_by(sym.aTB.0..sTB.1.) %>%
+  summarise(
+    n = n(),
+    median_age = median(age, na.rm = TRUE),
+    Q1 = quantile(age, 0.25, na.rm = TRUE),
+    Q3 = quantile(age, 0.75, na.rm = TRUE)
+  )
+wilcox.test(age ~ sym.aTB.0..sTB.1., data = df)
+
+```
+
+```{r day}
+df_day %>%
+  group_by(sym.aTB.0..sTB.1.) %>%
+  summarise(
+    n = n(),
+    median_treatday = median(treat_days, na.rm = TRUE),
+    Q1 = quantile(treat_days, 0.25, na.rm = TRUE),
+    Q3 = quantile(treat_days, 0.75, na.rm = TRUE)
+  )
+wilcox.test(treat_days ~ sym.aTB.0..sTB.1., data = df_day)
+```
+
+```{r 13}
+##民族
+table_minzu<-table(df$minority.no.0..yes.1.,df$sym.aTB.0..sTB.1.)
+table_minzu
+prop.table(table_minzu, margin = 2)
+chisq.test(table_minzu)
+
+```
+
+```{r 14}
+##户籍类别
+table_huji<-table(df$migrant.no.0.yes.1..,df$sym.aTB.0..sTB.1.)
+table_huji
+prop.table(table_huji, margin = 2)
+chisq.test(table_huji)
+
+```
+
+```{r 15}
+##zhiye
+table_zhiye<-table(df$occupation,df$sym.aTB.0..sTB.1.)
+table_zhiye
+prop.table(table_zhiye, margin = 2)
+chisq.test(table_zhiye)
+
+```
+
+
+```{r 17}
+##result
+
+df_1 <- df[df$smear0.negative.2..positive.1. != 3, ]
+df_1 <- droplevels(subset(df, smear0.negative.2..positive.1. != 3))
+
+result<-table(df_1$smear0.negative.2..positive.1.,df_1$sym.aTB.0..sTB.1.)
+result
+prop.table(result, margin = 2)
+chisq.test(result)
+```
+
+```{r 18}
+##jieju
+jieju<-table(df$outcomes,df$sym.aTB.0..sTB.1.)
+jieju
+prop.table(jieju, margin = 2)
+chisq.test(jieju)
+```
+
+
+```{r 20}
+#2yue
+yue2 <- table(df$smear2.negative.2..positive.1.,df$sym.aTB.0..sTB.1.)
+yue2
+prop.table(yue2, margin = 2)
+chisq.test(yue2)
+
+```
+
+```{r tang}
+tang <- table(df$diabetes,df$sym.aTB.0..sTB.1.)
+tang
+prop.table(tang, margin = 2)
+chisq.test(tang)
+
+```
+
+```{r culture}
+cul <-table(df$culture0, df$sym.aTB.0..sTB.1.)
+cul
+prop.table(cul, margin = 2)
+df_2 <- df[df$culture0 != 3, ]
+df_2 <- droplevels(subset(df, culture0 != 3))
+cul1 <-table(df_2$culture0, df_2$sym.aTB.0..sTB.1.)
+cul1
+chisq.test(cul1)
+```
+
+```{r fenzi}
+fen <-table(df$fenzi0, df$sym.aTB.0..sTB.1.)
+fen
+prop.table(fen, margin = 2)
+df_3 <- df[df$fenzi0 != 3, ]
+df_3 <- droplevels(subset(df, fenzi0 != 3))
+fen1 <-table(df_3$fenzi0, df_3$sym.aTB.0..sTB.1.)
+fen1
+prop.table(fen1,margin = 2)
+chisq.test(fen1)
+
+```
+
+```{r lineage}
+lin <-table(df$lineage, df$sym.aTB.0..sTB.1.)
+lin
+prop.table(lin, margin = 2)
+df_4 <- df[df$lineage != 3, ]
+df_4 <- droplevels(subset(df, lineage != 3))
+df_4 <- df_4[df_4$lineage != 0, ]
+df_4 <- droplevels(subset(df_4, lineage != 0))
+lin1 <-table(df_4$lineage, df_4$sym.aTB.0..sTB.1.)
+lin1
+prop.table(lin1,margin = 2)
+chisq.test(lin1)
+
+```
+
+```{r dr}
+dr <-table(df$Drug.resistance.profile.sus.0.dr.1.mdr.2., df$sym.aTB.0..sTB.1.)
+dr
+prop.table(dr, margin = 2)
+df_5 <- df[df$Drug.resistance.profile.sus.0.dr.1.mdr.2. != 3, ]
+df_5 <- droplevels(subset(df, Drug.resistance.profile.sus.0.dr.1.mdr.2. != 3))
+
+dr1 <-table(df_5$Drug.resistance.profile.sus.0.dr.1.mdr.2., df_5$sym.aTB.0..sTB.1.)
+dr1
+prop.table(dr1,margin = 2)
+chisq.test(dr1)
+```
+
+```{r source}
+table_sou <- table(df$source,df$sym.aTB.0..sTB.1.)
+table_sou
+prop.table(table_sou, margin = 2)
+chisq.test(table_sou)
+
+```
